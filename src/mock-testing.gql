@@ -1,0 +1,76 @@
+query GetAllCVs {
+  cvs {
+    id
+    name
+    age
+    job
+    user {
+      name
+      email
+      role
+    }
+    skills {
+      designation
+    }
+  }
+}
+
+query GetCV {
+  cv(id: "1") {
+    name
+    job
+    user {
+      name
+    }
+    skills {
+      designation
+    }
+  }
+}
+
+
+mutation AddCV {
+  addCv(input: {
+    name: "New CV",
+    age: 28,
+    job: "Tester",
+    userId: "1",
+    skillIds: ["1", "3"]
+  }) {
+    id
+    name
+    skills {
+      designation
+    }
+  }
+}
+
+mutation UpdateCV {
+  updateCv(id: "1", input: {
+    name: "Updated CV",
+    age: 31,
+    job: "Senior Developer",
+    userId: "1",
+    skillIds: ["1", "2", "3"]
+  }) {
+    id
+    name
+  }
+}
+
+mutation DeleteCV {
+  deleteCv(id: "2")
+}
+
+subscription {
+  cvChanged {
+    mutation
+    cv {
+      id
+      name
+      user {
+        name
+      }
+    }
+  }
+}
