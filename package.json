@@ -7,6 +7,9 @@
     "test": "ts-node src/test.ts",
     "build": "tsc"
   },
+  "prisma": {
+  "seed": "ts-node prisma/seed.ts"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -14,14 +17,18 @@
   "dependencies": {
     "@graphql-tools/schema": "^10.0.23",
     "@graphql-yoga/node": "^3.9.1",
+    "@prisma/client": "^6.7.0",
     "@types/node": "^22.15.3",
     "graphql": "^16.11.0",
     "graphql-subscriptions": "^2.0.0",
     "graphql-tag": "^2.12.6",
     "graphql-ws": "^5.16.2",
     "graphql-yoga": "^4.0.0",
+    "prisma": "^6.7.0",
+    "reflect-metadata": "^0.2.2",
     "ts-node": "^10.9.1",
     "ts-node-dev": "^2.0.0",
+    "type-graphql": "^2.0.0-rc.2",
     "typescript": "^5.8.3",
     "ws": "^8.18.1"
   },

@@ -1,69 +1,81 @@
-import { gql } from "graphql-tag";
+import { ObjectType, Field, InputType, registerEnumType, ID } from 'type-graphql';
+import { Role, MutationType } from '../types';
+import { User as PrismaUser, Skill as PrismaSkill, Cv as PrismaCv } from '@prisma/client';
 
-export const typeDefs = gql`
-  # Enums
-  enum Role {
-    USER
-    ADMIN
-  }
+registerEnumType(Role, { name: 'Role' });
+registerEnumType(MutationType, { name: 'MutationType' });
 
-  enum MutationType {
-    CREATED
-    UPDATED
-    DELETED
-  }
+@ObjectType()
+export class User implements PrismaUser {
+  @Field(() => ID)
+  id!: string;
 
-  # Types
-  type User {
-    id: ID!
-    name: String!
-    email: String!
-    role: Role!
-  }
+  @Field()
+  name!: string;
 
-  type Skill {
-    id: ID!
-    designation: String!
-  }
+  @Field()
+  email!: string;
 
-  type Cv {
-    id: ID!
-    name: String!
-    age: Int!
-    job: String!
-    user: User!
-    skills: [Skill!]!
-  }
+  @Field(() => Role)
+  role!: Role;
+}
 
-  type CvChange {
-    mutation: MutationType!
-    cv: Cv!
-  }
+@ObjectType()
+export class Skill implements PrismaSkill {
+  @Field(() => ID)
+  id!: string;
 
-  # Input Types
-  input CvInput {
-    name: String!
-    age: Int!
-    job: String!
-    userId: ID!
-    skillIds: [ID!]!
-  }
+  @Field()
+  designation!: string;
+}
 
-  # Queries
-  type Query {
-    cvs: [Cv!]!
-    cv(id: ID!): Cv
-  }
+@ObjectType()
+export class Cv implements PrismaCv {
+  @Field(() => ID)
+  id!: string;
 
-  # Mutations
-  type Mutation {
-    addCv(input: CvInput!): Cv
-    updateCv(id: ID!, input: CvInput!): Cv
-    deleteCv(id: ID!): Boolean
-  }
+  @Field()
+  name!: string;
 
-  # Subscriptions
-  type Subscription {
-    cvChanged: CvChange!
-  }
-`;
+  @Field()
+  age!: number;
+
+  @Field(() => ID)
+  userId!: string;
+  
+  @Field()
+  job!: string;
+
+  @Field(() => User)
+  user!: User;
+
+  @Field(() => [Skill])
+  skills!: Skill[];
+}
+
+@InputType()
+export class CvInput {
+  @Field()
+  name!: string;
+
+  @Field()
+  age!: number;
+
+  @Field()
+  job!: string;
+
+  @Field(() => ID)
+  userId!: string;
+
+  @Field(() => [ID])
+  skillIds!: string[];
+}
+
+@ObjectType()
+export class CvChange {
+  @Field(() => MutationType)
+  mutation!: MutationType;
+
+  @Field(() => Cv)
+  cv!: Cv;
+}

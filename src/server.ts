@@ -1,60 +1,47 @@
-import { createServer } from "node:http"
-import { createYoga, createPubSub } from "graphql-yoga"
-import { makeExecutableSchema } from "@graphql-tools/schema"
-import { WebSocketServer } from "ws"
-import { useServer } from "graphql-ws/lib/use/ws"
-import { execute, subscribe, parse, GraphQLSchema } from "graphql"
+import "reflect-metadata";
+import { buildSchemaSync } from "type-graphql";
+import { createServer } from "node:http";
+import { createYoga } from "graphql-yoga";
+import { WebSocketServer } from "ws";
+import { useServer } from "graphql-ws/lib/use/ws";
+import { CvResolver } from "./schema/resolvers";
+import { createContext } from "./context";
+import { execute, subscribe, parse } from 'graphql';
 
-import { typeDefs } from "./schema/typeDefs"
-import { resolvers } from "./schema/resolvers"
-import { createContext } from "./context"
+const schema = buildSchemaSync({
+  resolvers: [CvResolver],
+  pubSub: createContext().pubsub,
+});
 
-const pubsub = createPubSub<{
-  CV_CHANGED: [payload: { cvChanged: { mutation: string; cv: any } }]
-}>()
-
-const schema: GraphQLSchema = makeExecutableSchema({
-  typeDefs,
-  resolvers,
-})
-
-const yoga = createYoga<{
-  db: any
-  pubsub: typeof pubsub
-}>({
+const yoga = createYoga({
   schema,
-  context: () => createContext(pubsub),
+  context: createContext(),
   graphiql: { subscriptionsProtocol: "WS" },
   cors: { origin: "*" },
-})
+});
 
-const server = createServer(yoga)
-
-const wsServer = new WebSocketServer({
-  server,
-  path: "/graphql",
-})
+const server = createServer(yoga);
+const wsServer = new WebSocketServer({ server, path: "/graphql" });
 
 useServer(
   {
     schema,
-    execute,
+    execute: (args) => args.rootValue ? args.rootValue : execute(args),
     subscribe,
-    onSubscribe: (ctx, msg) => {
-      const { payload } = msg
-      const document = parse(payload.query)
-      return {
+    onSubscribe: async (ctx, msg) => {
+      const args = {
         schema,
-        document,
-        variableValues: payload.variables,
-        operationName: payload.operationName,
-        contextValue: createContext(pubsub),
-      }
+        operationName: msg.payload.operationName,
+        document: parse(msg.payload.query),
+        variableValues: msg.payload.variables,
+        contextValue: createContext(),
+      };
+      return args;
     },
   },
   wsServer
-)
+);
 
 server.listen(4000, () => {
-  console.log("🚀 Server running at http://localhost:4000/graphql")
-})
+  console.log("🚀 Server running at http://localhost:4000/graphql");
+});

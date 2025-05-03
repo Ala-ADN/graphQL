@@ -1,67 +1,100 @@
-import { Cv, CvInput, MutationType } from "../types";
-import { Context } from "../context";
-
+import { Resolver, Query, Mutation, Arg, Subscription, Root, Ctx } from 'type-graphql';
+import { Cv, CvInput, CvChange, } from './typeDefs';
+import { MutationType } from '../types';
+import { Context } from '../context';
 const CV_CHANGED = 'CV_CHANGED';
 
-export const resolvers = {
-  Cv: {
-    user: (parent: Cv, _: never, context: Context) => 
-      context.db.users.find(user => user.id === parent.userId),
-    skills: (parent: Cv, _: never, context: Context) => 
-      context.db.skills.filter(skill => parent.skillIds.includes(skill.id)),
-  },
+@Resolver(() => Cv)
+export class CvResolver {
+  @Query(() => [Cv])
+  async cvs(@Ctx() ctx: Context) {
+    return ctx.prisma.cv.findMany({
+      include: { user: true, skills: true },
+    });
+  }
 
-  Query: {
-    cvs: (_: never, __: never, context: Context) => context.db.cvs,
-    cv: (_: never, { id }: { id: string }, context: Context) => 
-      context.db.cvs.find(cv => cv.id === id),
-  },
+  @Query(() => Cv, { nullable: true })
+  async cv(@Arg('id') id: string, @Ctx() ctx: Context) {
+    return ctx.prisma.cv.findUnique({
+      where: { id },
+      include: { user: true, skills: true },
+    });
+  }
 
-  Mutation: {
-    addCv: (_: never, { input }: { input: CvInput }, context: Context) => {
-        const newCv: Cv = {
-          id: String(Date.now()),
-          ...input,
-        };
-        context.db.cvs.push(newCv);
-        
-        context.pubsub.publish("CV_CHANGED", {
-          cvChanged: {
-            mutation: MutationType.CREATED,
-            cv: newCv
-          }
-        });
-        
-        return newCv;
+  @Mutation(() => Cv)
+  async addCv(
+    @Arg('input') input: CvInput,
+    @Ctx() { prisma, pubsub }: Context
+  ) {
+    const { userId, skillIds, ...rest } = input;
+    const newCv = await prisma.cv.create({
+      data: {
+        ...rest,
+        userId,
+        skills: {
+          connect: skillIds.map(id => ({ id }))
+        }
       },
+      include: { user: true, skills: true },
+    });
 
-    updateCv: (_: never, { id, input }: { id: string, input: CvInput }, context: Context) => {
-      const index = context.db.cvs.findIndex(cv => cv.id === id);
-      if (index === -1) return null;
-      const updatedCv = { ...context.db.cvs[index], ...input };
-      context.db.cvs[index] = updatedCv;
-      context.pubsub.publish(CV_CHANGED, { 
+    await pubsub.publish(CV_CHANGED, { 
+      cvChanged: { mutation: MutationType.CREATED, cv: newCv } 
+    });
+    return newCv;
+  }
+
+  @Mutation(() => Cv, { nullable: true })
+  async updateCv(
+    @Arg('id') id: string,
+    @Arg('input') input: CvInput,
+    @Ctx() { prisma, pubsub }: Context
+  ) {
+    try {
+      const { userId, skillIds, ...rest } = input;
+      const updatedCv = await prisma.cv.update({
+        where: { id },
+        data: {
+          ...rest,
+          userId,
+          skills: {
+            set: skillIds.map(id => ({ id }))
+          }
+        },
+        include: { user: true, skills: true },
+      });
+
+      await pubsub.publish(CV_CHANGED, { 
         cvChanged: { mutation: MutationType.UPDATED, cv: updatedCv } 
       });
       return updatedCv;
-    },
+    } catch {
+      return null;
+    }
+  }
 
-    deleteCv: (_: never, { id }: { id: string }, context: Context) => {
-      const index = context.db.cvs.findIndex(cv => cv.id === id);
-      if (index === -1) return false;
-      const [deletedCv] = context.db.cvs.splice(index, 1);
-      context.pubsub.publish(CV_CHANGED, { 
+  @Mutation(() => Boolean)
+  async deleteCv(
+    @Arg('id') id: string,
+    @Ctx() { prisma, pubsub }: Context
+  ) {
+    try {
+      const deletedCv = await prisma.cv.delete({
+        where: { id },
+        include: { user: true, skills: true },
+      });
+
+      await pubsub.publish(CV_CHANGED, { 
         cvChanged: { mutation: MutationType.DELETED, cv: deletedCv } 
       });
       return true;
-    },
-  },
+    } catch {
+      return false;
+    }
+  }
 
-  Subscription: {
-    cvChanged: {
-      subscribe: (_: never, __: never, context: Context) =>
-        context.pubsub.subscribe("CV_CHANGED"),
-      resolve: (payload: { cvChanged: any }) => payload.cvChanged,
-    },
-  },
-};
+  @Subscription(() => CvChange, { topics: CV_CHANGED })
+  cvChanged(@Root() payload: { cvChanged: CvChange }): CvChange {
+    return payload.cvChanged;
+  }
+}
