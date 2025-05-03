@@ -59,7 +59,7 @@ mutation UpdateCV {
 }
 
 mutation DeleteCV {
-  deleteCv(id: "2")
+  deleteCv(id: "1")
 }
 
 subscription {
