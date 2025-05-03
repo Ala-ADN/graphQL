@@ -29,8 +29,8 @@ export const typeDefs = gql`
   type Cv {
     id: ID!
     name: String!
-    age: Int!
-    job: String!
+    age: Int
+    job: String
     user: User!
     skills: [Skill!]!
   }
@@ -43,10 +43,19 @@ export const typeDefs = gql`
   # Input Types
   input CvInput {
     name: String!
-    age: Int!
-    job: String!
+    age: Int
+    job: String
     userId: ID!
     skillIds: [ID!]!
+  }
+
+  input CvUpdateInput {
+    id: ID!
+    name: String
+    age: Int
+    job: String
+    userId: ID
+    skillIds: [ID!]
   }
 
   # Queries
@@ -57,9 +66,9 @@ export const typeDefs = gql`
 
   # Mutations
   type Mutation {
-    addCv(input: CvInput!): Cv
-    updateCv(id: ID!, input: CvInput!): Cv
-    deleteCv(id: ID!): Boolean
+    addCv(input: CvInput!): Cv!
+    updateCv(input: CvUpdateInput!): Cv
+    deleteCv(id: ID!): Boolean!
   }
 
   # Subscriptions

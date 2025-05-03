@@ -42,3 +42,12 @@ export interface CvChange {
   mutation: MutationType;
   cv: Cv;
 }
+
+export interface CvUpdateInput {
+  id:       string;
+  name?:    string;
+  age?:     number;
+  job?:     string;
+  userId?:  string;
+  skillIds?: string[];
+}

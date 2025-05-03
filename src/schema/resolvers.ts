@@ -1,4 +1,4 @@
-import { Cv, CvInput, MutationType } from "../types";
+import { Cv, CvInput, CvUpdateInput, MutationType } from "../types";
 import { Context } from "../context";
 
 const CV_CHANGED = 'CV_CHANGED';
@@ -18,41 +18,104 @@ export const resolvers = {
   },
 
   Mutation: {
-    addCv: (_: never, { input }: { input: CvInput }, context: Context) => {
-        const newCv: Cv = {
-          id: String(Date.now()),
-          ...input,
-        };
-        context.db.cvs.push(newCv);
-        
-        context.pubsub.publish("CV_CHANGED", {
-          cvChanged: {
-            mutation: MutationType.CREATED,
-            cv: newCv
-          }
-        });
-        
-        return newCv;
-      },
+    addCv: (
+      _parent: unknown,
+      { input }: { input: CvInput },
+      context: Context
+    ): Cv => {
+      const { users, skills, cvs } = context.db;
 
-    updateCv: (_: never, { id, input }: { id: string, input: CvInput }, context: Context) => {
-      const index = context.db.cvs.findIndex(cv => cv.id === id);
-      if (index === -1) return null;
-      const updatedCv = { ...context.db.cvs[index], ...input };
-      context.db.cvs[index] = updatedCv;
-      context.pubsub.publish(CV_CHANGED, { 
-        cvChanged: { mutation: MutationType.UPDATED, cv: updatedCv } 
+      // 1. verify user exists
+      if (!users.some(u => u.id === input.userId)) {
+        throw new Error(`User id="${input.userId}" introuvable`);
+      }
+      // 2. verify skills exist
+      for (const sId of input.skillIds) {
+        if (!skills.some(s => s.id === sId)) {
+          throw new Error(`Skill id="${sId}" introuvable`);
+        }
+      }
+
+      // 3. generate new numeric ID
+      const maxId = cvs.reduce((m, cv) => Math.max(m, Number(cv.id)), 0);
+      const newCv: Cv = {
+        id: String(maxId + 1),
+        ...input,
+      };
+
+      cvs.push(newCv);
+
+      // 4. publish creation event
+      context.pubsub.publish(CV_CHANGED, {
+        cvChanged: {
+          mutation: MutationType.CREATED,
+          cv: newCv,
+        },
       });
-      return updatedCv;
+
+      return newCv;
     },
 
-    deleteCv: (_: never, { id }: { id: string }, context: Context) => {
-      const index = context.db.cvs.findIndex(cv => cv.id === id);
-      if (index === -1) return false;
-      const [deletedCv] = context.db.cvs.splice(index, 1);
-      context.pubsub.publish(CV_CHANGED, { 
-        cvChanged: { mutation: MutationType.DELETED, cv: deletedCv } 
+    updateCv: (
+      _parent: unknown,
+      { input }: { input: CvUpdateInput },
+      context: Context
+    ): Cv | null => {
+      const { users, skills, cvs } = context.db;
+      const cv = cvs.find(c => c.id === input.id);
+      if (!cv) throw new Error(`CV id="${input.id}" introuvable`);
+
+      // if changing userId, verify
+      if (input.userId !== undefined &&
+          !users.some(u => u.id === input.userId)) {
+        throw new Error(`User id="${input.userId}" introuvable`);
+      }
+      // if changing skillIds, verify each
+      if (input.skillIds) {
+        for (const sId of input.skillIds) {
+          if (!skills.some(s => s.id === sId)) {
+            throw new Error(`Skill id="${sId}" introuvable`);
+          }
+        }
+        cv.skillIds = input.skillIds;
+      }
+
+      // update provided fields
+      if (input.name   !== undefined) cv.name   = input.name;
+      if (input.age    !== undefined) cv.age    = input.age;
+      if (input.job    !== undefined) cv.job    = input.job;
+      if (input.userId !== undefined) cv.userId = input.userId;
+
+      // publish update event
+      context.pubsub.publish(CV_CHANGED, {
+        cvChanged: {
+          mutation: MutationType.UPDATED,
+          cv,
+        },
       });
+
+      return cv;
+    },
+
+    deleteCv: (
+      _parent: unknown,
+      { id }: { id: string },
+      context: Context
+    ): boolean => {
+      const cvs = context.db.cvs;
+      const idx = cvs.findIndex(c => c.id === id);
+      if (idx === -1) return false;
+
+      const [deletedCv] = cvs.splice(idx, 1);
+
+      // publish deletion event
+      context.pubsub.publish(CV_CHANGED, {
+        cvChanged: {
+          mutation: MutationType.DELETED,
+          cv: deletedCv,
+        },
+      });
+
       return true;
     },
   },
