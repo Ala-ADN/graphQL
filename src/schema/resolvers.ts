@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Arg, Subscription, Root, Ctx } from 'type-graphql';
-import { Cv, CvInput, CvChange, } from './typeDefs';
+import { Cv, CvInput,CvUpdateInput, CvChange, } from './typeDefs';
 import { MutationType } from '../types';
 import { Context } from '../context';
 const CV_CHANGED = 'CV_CHANGED';
@@ -25,72 +25,122 @@ export class CvResolver {
   async addCv(
     @Arg('input') input: CvInput,
     @Ctx() { prisma, pubsub }: Context
-  ) {
-    const { userId, skillIds, ...rest } = input;
+  ): Promise<Cv> {
+    // 1. verify user exists
+    const user = await prisma.user.findUnique({ where: { id: input.userId } });
+    if (!user) {
+      throw new Error(`User id="${input.userId}" introuvable`);
+    }
+
+    // 2. verify each skill exists
+    for (const skillId of input.skillIds) {
+      const skill = await prisma.skill.findUnique({ where: { id: skillId } });
+      if (!skill) {
+        throw new Error(`Skill id="${skillId}" introuvable`);
+      }
+    }
+
+    // 3. create CV
     const newCv = await prisma.cv.create({
       data: {
-        ...rest,
-        userId,
+        name:   input.name,
+        age:    input.age,
+        job:    input.job,
+        userId: input.userId,
         skills: {
-          connect: skillIds.map(id => ({ id }))
-        }
+          connect: input.skillIds.map(id => ({ id })),
+        },
       },
       include: { user: true, skills: true },
     });
 
-    await pubsub.publish(CV_CHANGED, { 
-      cvChanged: { mutation: MutationType.CREATED, cv: newCv } 
+    // 4. publish creation event
+    await pubsub.publish(CV_CHANGED, {
+      cvChanged: { mutation: MutationType.CREATED, cv: newCv },
     });
+
     return newCv;
   }
 
   @Mutation(() => Cv, { nullable: true })
   async updateCv(
-    @Arg('id') id: string,
-    @Arg('input') input: CvInput,
+    @Arg('input') input: CvUpdateInput,
     @Ctx() { prisma, pubsub }: Context
-  ) {
-    try {
-      const { userId, skillIds, ...rest } = input;
-      const updatedCv = await prisma.cv.update({
-        where: { id },
-        data: {
-          ...rest,
-          userId,
-          skills: {
-            set: skillIds.map(id => ({ id }))
-          }
-        },
-        include: { user: true, skills: true },
-      });
-
-      await pubsub.publish(CV_CHANGED, { 
-        cvChanged: { mutation: MutationType.UPDATED, cv: updatedCv } 
-      });
-      return updatedCv;
-    } catch {
+  ): Promise<Cv | null> {
+    const existing = await prisma.cv.findUnique({
+      where: { id: input.id }
+    });
+    if (!existing) {
       return null;
     }
+
+    
+    if (input.userId) {
+      const user = await prisma.user.findUnique({ where: { id: input.userId } });
+      if (!user) {
+        throw new Error(`User id="${input.userId}" introuvable`);
+      }
+    }
+
+    
+    if (input.skillIds) {
+      for (const skillId of input.skillIds) {
+        const skill = await prisma.skill.findUnique({ where: { id: skillId } });
+        if (!skill) {
+          throw new Error(`Skill id="${skillId}" introuvable`);
+        }
+      }
+    }
+
+
+    const updatedCv = await prisma.cv.update({
+      where: { id: input.id },
+      data: {
+
+        ...(input.name     !== undefined && { name:   input.name     }),
+        ...(input.age      !== undefined && { age:    input.age      }),
+        ...(input.job      !== undefined && { job:    input.job      }),
+        ...(input.userId   !== undefined && { userId: input.userId   }),
+        ...(input.skillIds !== undefined && {
+          skills: {
+            set: input.skillIds.map(id => ({ id }))
+          }
+        }),
+      },
+      include: { user: true, skills: true },
+    });
+
+
+    await pubsub.publish(CV_CHANGED, {
+      cvChanged: { mutation: MutationType.UPDATED, cv: updatedCv },
+    });
+
+    return updatedCv;
   }
 
   @Mutation(() => Boolean)
   async deleteCv(
     @Arg('id') id: string,
     @Ctx() { prisma, pubsub }: Context
-  ) {
-    try {
-      const deletedCv = await prisma.cv.delete({
-        where: { id },
-        include: { user: true, skills: true },
-      });
-
-      await pubsub.publish(CV_CHANGED, { 
-        cvChanged: { mutation: MutationType.DELETED, cv: deletedCv } 
-      });
-      return true;
-    } catch {
+  ): Promise<boolean> {
+    // check existence first
+    const toDelete = await prisma.cv.findUnique({ where: { id } });
+    if (!toDelete) {
       return false;
     }
+
+    // delete & include relations so we can publish them
+    const deletedCv = await prisma.cv.delete({
+      where: { id },
+      include: { user: true, skills: true },
+    });
+
+    // publish deletion event
+    await pubsub.publish(CV_CHANGED, {
+      cvChanged: { mutation: MutationType.DELETED, cv: deletedCv },
+    });
+
+    return true;
   }
 
   @Subscription(() => CvChange, { topics: CV_CHANGED })
